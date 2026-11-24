@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "linearvggt"
+version = "0.1.0"
+description = "LinearVGGT: a linear-time visual geometry transformer with register-guided sparse attention"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+    "torch>=2.5",
+    "torchvision",
+    "numpy<2",
+    "einops",
+    "Pillow",
+    "huggingface_hub",
+    "transformers",
+    "mamba-ssm>=2.2.4",
+    "causal-conv1d>=1.5",
+]
+
+[project.optional-dependencies]
+eval = ["accelerate", "open3d", "evo", "opencv-python", "scipy", "tqdm", "imageio", "tifffile", "matplotlib", "roma"]
+
+[project.urls]
+Homepage = "https://github.com/UNITES-Lab/linear-vggt"
+
+[tool.setuptools]
+packages = [
+    "linearvggt", "linearvggt.models", "linearvggt.layers", "linearvggt.inference",
+    "streamvggt", "streamvggt.models", "streamvggt.layers", "streamvggt.heads", "streamvggt.heads.track_modules",
+    "streamvggt.utils", "dust3r_utils",
+]
+
+[tool.setuptools.package-dir]
+linearvggt = "linearvggt"
+streamvggt = "third_party/streamvggt"
+dust3r_utils = "third_party/dust3r_utils"

@@ -1,0 +1,23 @@
+# PyTorch: install the build for your CUDA version first, for example
+#   pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu128
+torch>=2.5
+torchvision
+numpy<2
+einops
+Pillow
+huggingface_hub
+transformers
+# Recurrent layers (compiled CUDA extensions; see README, Installation)
+mamba-ssm>=2.2.4
+causal-conv1d>=1.5
+# Evaluation
+accelerate
+opencv-python
+matplotlib
+scipy
+open3d
+evo
+roma
+tqdm
+imageio
+tifffile

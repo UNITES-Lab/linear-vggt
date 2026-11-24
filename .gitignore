@@ -221,3 +221,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# LinearVGGT: data, weights and results
+/data/
+/ckpt/
+/outputs/
+/eval_results/
+/runs/
+wandb/
+*.pt
+*.pth
+slurm-*.out
+.DS_Store

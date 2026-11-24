@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--PAGE-HEAD-->
+<title>LinearVGGT</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="LinearVGGT: a linear-time online visual geometry transformer with a hybrid architecture. Streaming 3D reconstruction at 27 ms per frame.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: one reading column (max 1080px); the stream viewer opens the page as a dark stage, text sections follow on a cool paper ground. */
+:root {
+  --bg: #f3f5f8;          /* cool paper */
+  --surface: #ffffff;
+  --ink: #131b2a;
+  --muted: #566176;
+  --line: #d6dce6;
+  --accent: #0b6aa8;      /* the LinearVGGT blue of the paper plots */
+  --accent-ink: #ffffff;
+  --teacher: #c2570c;     /* the StreamVGGT orange of the paper plots */
+  --stage: #0c1220;       /* viewer ground, the same in both themes */
+  --stage-ink: #dbe4f3;
+  --stage-muted: #8794ab;
+  --stage-line: #243049;
+  --stage-accent: #58b7f0;
+  --plate: #ffffff;       /* white plate behind paper figures */
+  --display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1522; --surface: #172032; --ink: #e6ebf4; --muted: #9aa6ba; --line: #2a3650;
+    --accent: #58b7f0; --accent-ink: #06121e; --teacher: #f0934a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1522; --surface: #172032; --ink: #e6ebf4; --muted: #9aa6ba; --line: #2a3650;
+  --accent: #58b7f0; --accent-ink: #06121e; --teacher: #f0934a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 1rem/1.6 var(--body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* header */
+.head { padding-block: 3rem 1.75rem; }
+.head h1 { font-size: clamp(1.9rem, 4.6vw, 3.1rem); line-height: 1.08; letter-spacing: -0.02em; font-weight: 700; max-width: 26em; }
+.head h1 span { color: var(--accent); }
+.head .sub { font-size: clamp(1.05rem, 2vw, 1.3rem); color: var(--muted); margin: 0.9rem 0 0; max-width: 46ch; }
+.byline { margin: 1.25rem 0 0; color: var(--ink); font-size: 1rem; line-height: 1.7; }
+.links { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1.4rem; }
+.btn { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.5rem 0.95rem; border-radius: 6px; border: 1px solid var(--ink); color: var(--ink); background: transparent; font: 500 0.92rem var(--body); text-decoration: none; }
+.btn[aria-disabled="true"] { border-color: var(--line); color: var(--muted); cursor: default; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.btn small { font: 400 0.72rem var(--mono); color: inherit; opacity: 0.75; }
+
+/* stream viewer */
+.stage { background: var(--stage); color: var(--stage-ink); border-radius: 10px; overflow: hidden; }
+.stage-top { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid var(--stage-line); }
+.tabs { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.tabs button { font: 500 0.82rem var(--body); color: var(--stage-muted); background: transparent; border: 1px solid var(--stage-line); border-radius: 999px; padding: 0.3rem 0.8rem; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--stage); background: var(--stage-accent); border-color: var(--stage-accent); }
+.stage-note { font: 400 0.75rem var(--mono); color: var(--stage-muted); }
+.panels { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.panel { position: relative; min-width: 0; border-right: 1px solid var(--stage-line); }
+.panel:last-of-type { border-right: 0; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; padding: 0.7rem 0.9rem 0.5rem; }
+.panel-head h3 { font: 600 0.95rem var(--display); color: var(--stage-ink); }
+.panel-head span { font: 400 0.68rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--stage-muted); }
+.panel.ours .panel-head h3 { color: var(--stage-accent); }
+.panel-view { position: relative; }
+.panel canvas { display: block; width: 100%; aspect-ratio: 1 / 1; touch-action: none; cursor: grab; }
+.panel canvas:active { cursor: grabbing; }
+.panel .frame { position: absolute; left: 0.6rem; bottom: 0.6rem; width: 34%; aspect-ratio: 518 / 392; border-radius: 3px; border: 1px solid var(--stage-line); background-color: var(--stage-line); background-repeat: no-repeat; pointer-events: none; }
+.panel .readout { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.8rem; font: 400 0.76rem var(--mono); font-variant-numeric: tabular-nums; margin: 0; padding: 0.6rem 0.9rem 0.8rem; border-top: 1px solid var(--stage-line); }
+.panel .readout dt { color: var(--stage-muted); }
+.panel .readout dd { margin: 0; text-align: right; }
+.panel .bar { height: 3px; background: var(--stage-line); }
+.panel .bar i { display: block; height: 100%; width: 0; background: var(--stage-muted); }
+.panel.ours .bar i { background: var(--stage-accent); }
+.panel .done { color: var(--stage-accent); }
+.panels .loading { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font: 400 0.85rem var(--mono); color: var(--stage-muted); background: var(--stage); }
+.transport { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding: 0.75rem 1rem; border-top: 1px solid var(--stage-line); }
+.transport .play { width: 5.2rem; font: 600 0.85rem var(--body); color: var(--stage); background: var(--stage-ink); border: 0; border-radius: 6px; padding: 0.45rem 0; cursor: pointer; }
+.transport input[type="range"] { flex: 1 1 12rem; min-width: 0; accent-color: var(--stage-accent); }
+.transport label { font: 400 0.75rem var(--mono); color: var(--stage-muted); display: inline-flex; align-items: center; gap: 0.4rem; }
+.transport select { font: 400 0.75rem var(--mono); color: var(--stage-ink); background: var(--stage); border: 1px solid var(--stage-line); border-radius: 4px; padding: 0.2rem 0.3rem; }
+.transport .count { font: 500 0.8rem var(--mono); font-variant-numeric: tabular-nums; min-width: 7ch; text-align: right; }
+.stage-foot { margin: 0; padding: 0 1rem 0.9rem; font-size: 0.78rem; line-height: 1.55; color: var(--stage-muted); max-width: 100ch; }
+.stage-foot b { color: var(--stage-ink); font-weight: 500; }
+
+/* sections */
+section { padding-block: 2.75rem 0; }
+section h2 { font-size: clamp(1.35rem, 2.6vw, 1.75rem); letter-spacing: -0.01em; margin-bottom: 0.9rem; }
+.prose p { max-width: 68ch; margin: 0 0 0.9rem; }
+.figures { display: grid; gap: 1.25rem; margin-top: 1.5rem; }
+figure { margin: 0; }
+figure .plate { background: var(--plate); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+figure img { display: block; width: 100%; height: auto; }
+figcaption { font-size: 0.88rem; color: var(--muted); margin-top: 0.6rem; max-width: 76ch; }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-block: 1px solid var(--line); margin-top: 2.75rem; }
+.facts div { padding: 1.1rem 1rem 1.1rem 0; }
+.facts div + div { padding-left: 1rem; border-left: 1px solid var(--line); }
+.facts b { display: block; font: 600 clamp(1.4rem, 3vw, 2rem)/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.facts span { display: block; font-size: 0.85rem; color: var(--muted); margin-top: 0.3rem; }
+.parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 2.5rem; margin-top: 1.5rem; }
+.parts h3 { font-size: 1.02rem; margin-bottom: 0.3rem; }
+.parts p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+.scroll { overflow-x: auto; margin-top: 1.25rem; }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+caption { text-align: left; font-size: 0.88rem; color: var(--muted); padding-bottom: 0.6rem; caption-side: top; }
+th, td { padding: 0.45rem 0.7rem; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+thead th { font: 500 0.72rem var(--mono); letter-spacing: 0.04em; color: var(--muted); border-bottom: 1px solid var(--ink); }
+tr.ours td { font-weight: 600; }
+tr.ours td:first-child { color: var(--accent); }
+td.oom { color: var(--teacher); }
+pre { font: 400 0.82rem/1.55 var(--mono); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; overflow-x: auto; margin: 0; }
+.bib { position: relative; }
+.bib button { position: absolute; top: 0.6rem; right: 0.6rem; font: 500 0.72rem var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; }
+footer { padding-block: 2.5rem 3rem; color: var(--muted); font-size: 0.85rem; }
+footer p { max-width: 76ch; margin: 0 0 0.5rem; }
+
+@media (max-width: 760px) {
+  .panels { grid-template-columns: minmax(0, 1fr); }
+  .panel { border-right: 0; border-bottom: 1px solid var(--stage-line); }
+  .panel canvas { aspect-ratio: 4 / 3; }
+  .panel .frame { width: 26%; }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facts div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .facts div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .parts { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+<!--/PAGE-HEAD-->
+</head>
+<body>
+<!--PAGE-BODY-->
+<header class="wrap head">
+  <h1><span>LinearVGGT</span>: Linear-time Online Visual Geometry Transformer with Hybrid Architecture</h1>
+  <p class="sub">Cameras, depth and point maps from a video stream at 27&nbsp;ms per frame, 12 times faster than StreamVGGT.</p>
+  <p class="byline">Haoyu Kang, Pingzhi Li, Ruichen Zhang, Tianlong Chen<br>UNITES Lab, University of North Carolina at Chapel Hill</p>
+  <nav class="links" aria-label="Resources">
+    <span class="btn primary" aria-disabled="true">Paper <small>soon</small></span>
+    <span class="btn" aria-disabled="true">Code <small>soon</small></span>
+    <a class="btn" href="#bibtex">BibTeX</a>
+  </nav>
+</header>
+
+<main>
+<div class="wrap">
+  <div class="stage" id="viewer">
+    <div class="stage-top">
+      <div class="tabs" role="tablist" aria-label="Scene" id="scene-tabs"></div>
+      <span class="stage-note" id="scene-note"></span>
+    </div>
+    <div class="panels" id="panels">
+      <div class="loading" id="loading">Loading the scene…</div>
+    </div>
+    <div class="transport">
+      <button class="play" id="play" type="button">Pause</button>
+      <input type="range" id="timeline" min="0" max="1000" value="0" step="1" aria-label="Position in the stream">
+      <span class="count" id="count">0.0 s</span>
+      <label for="mode">show
+        <select id="mode">
+          <option value="speed" selected>measured speed</option>
+          <option value="frame">same frame</option>
+        </select>
+      </label>
+      <label for="speed">rate
+        <select id="speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+        </select>
+      </label>
+    </div>
+    <p class="stage-foot">The three methods receive the same frames at the same time. With <b>measured speed</b>, each method shows a frame when it has finished that frame: the clock uses the latency that we measured for each frame of each method on these streams, on one RTX PRO 6000 Blackwell GPU with 518×392 frames. With <b>same frame</b>, the three views show the same frame, for a comparison of the geometry. Drag to rotate all views, scroll or pinch to zoom.</p>
+  </div>
+
+  <div class="facts">
+    <div><b>27 ms</b><span>for each frame, almost constant on a stream of 1,024 frames</span></div>
+    <div><b>12×</b><span>faster than the StreamVGGT teacher on a 256-frame stream</span></div>
+    <div><b>38.8 FPS</b><span>the highest throughput of the online and offline models that we compare</span></div>
+    <div><b>59 h</b><span>GPU hours of training, 9% of the GPU hours of StreamVGGT</span></div>
+  </div>
+</div>
+
+<section class="wrap prose" id="abstract">
+  <h2>Abstract</h2>
+  <p>Transformer-based 3D reconstruction models such as VGGT and π³ predict cameras, depth and point maps directly from many input views. Causal attention models such as StreamVGGT extend them to online video but cache all past tokens, so their total compute grows quadratically with the stream length. Recurrent models such as CUT3R and TTT3R keep a fixed-size state at constant cost, but they progressively forget early geometry.</p>
+  <p>We present LinearVGGT, a hybrid model distilled from StreamVGGT, which uses Mamba2 layers for efficient sequence modeling in three of every four global layers. The remaining layers use register-guided sparse attention to retrieve a few relevant past frames, compensating for the limited exact long-range recall of Mamba2. Our distillation needs only 9% of the GPU hours and 31% of the training frames that StreamVGGT uses to learn from VGGT.</p>
+  <p>LinearVGGT keeps an almost constant latency of 27&nbsp;ms per frame over 1,024 frames and is on average 12 times faster than StreamVGGT. It outperforms its teacher and is competitive with the state-of-the-art streaming model LingBot-Map, while running 2.5× faster and using 2.7× less memory.</p>
+  <div class="figures">
+    <figure>
+      <div class="plate"><img src="static/images/teaser.png" alt="Left: 7-Scenes accuracy against the average latency per frame for streaming methods. Right: latency of the current frame against the number of frames for VGGT, StreamVGGT and LinearVGGT." loading="lazy"></div>
+      <figcaption>(a) 7-Scenes accuracy against the average latency per frame over a 256-frame stream for streaming methods. (b) Latency of the current frame as the stream grows; VGGT processes all frames again for each new frame.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="wrap" id="method">
+  <h2>Method</h2>
+  <div class="prose">
+    <p>LinearVGGT keeps the image encoder, the frame attention layers and the prediction heads of StreamVGGT and changes only the layers that connect frames.</p>
+  </div>
+  <div class="parts">
+    <div><h3>Mamba2 layers</h3><p>Three of every four global layers carry the past in a state of fixed size. A frame costs the same at each position of the stream, and the memory of these layers does not grow.</p></div>
+    <div><h3>Register-guided hierarchical sparse attention</h3><p>Every fourth layer reads the first frame as a fixed anchor and the few past frames that its register tokens select. A token indexer keeps only a subset of the patch tokens of each cached frame.</p></div>
+    <div><h3>Three-stage distillation</h3><p>Stage 1 aligns the mixing matrices with the attention matrices of the teacher. Stage 2 aligns the layer outputs. Stage 3 trains end to end with ground truth and a distillation term.</p></div>
+  </div>
+  <div class="figures">
+    <figure>
+      <div class="plate"><img src="static/images/overview.png" alt="Architecture: an image encoder, then frame attention that alternates with Mamba2 layers and register-guided sparse attention layers, then camera, point and depth heads." loading="lazy"></div>
+      <figcaption>Overview of the architecture. (a) LinearVGGT interleaves Mamba2 layers with register-guided sparse attention layers. (b) A Mamba2 layer carries the history in a fixed-size state, which it updates with the tokens of each new frame. (c) Details of the register-guided sparse attention layers.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="wrap" id="results">
+  <h2>3D reconstruction</h2>
+  <div class="scroll">
+    <table>
+      <caption>3D reconstruction with sparse views on 7-Scenes and NRGBD (mean values). FPS is the average over a stream of 256 frames. Acc and Comp: lower is better. NC: higher is better.</caption>
+      <thead>
+        <tr><th rowspan="2">Method</th><th rowspan="2">Mode</th><th colspan="3">7-Scenes</th><th colspan="3">NRGBD</th><th rowspan="2">FPS</th></tr>
+        <tr><th>Acc</th><th>Comp</th><th>NC</th><th>Acc</th><th>Comp</th><th>NC</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>VGGT</td><td>Offline</td><td>0.088</td><td>0.091</td><td>0.786</td><td>0.079</td><td>0.083</td><td>0.908</td><td>10.3</td></tr>
+        <tr><td>π³</td><td>Offline</td><td>0.123</td><td>0.115</td><td>0.783</td><td>0.028</td><td>0.030</td><td>0.910</td><td>14.1</td></tr>
+        <tr><td>FastVGGT</td><td>Offline</td><td>0.091</td><td>0.087</td><td>0.738</td><td>0.101</td><td>0.100</td><td>0.859</td><td>23.7</td></tr>
+        <tr><td>GoToHunt</td><td>Offline</td><td>0.075</td><td>0.070</td><td>0.757</td><td>0.060</td><td>0.069</td><td>0.893</td><td>20.4</td></tr>
+        <tr><td>StreamVGGT (teacher)</td><td>Online</td><td>0.129</td><td>0.115</td><td>0.751</td><td>0.084</td><td>0.079</td><td>0.861</td><td>3.2</td></tr>
+        <tr><td>OVGGT</td><td>Online</td><td>0.128</td><td>0.114</td><td>0.752</td><td>0.084</td><td>0.079</td><td>0.862</td><td>10.3</td></tr>
+        <tr><td>CUT3R</td><td>Online</td><td>0.119</td><td>0.120</td><td>0.722</td><td>0.094</td><td>0.073</td><td>0.836</td><td>22.0</td></tr>
+        <tr><td>TTT3R</td><td>Online</td><td>0.155</td><td>0.194</td><td>0.715</td><td>0.101</td><td>0.076</td><td>0.838</td><td>22.1</td></tr>
+        <tr><td>ZipMap</td><td>Online</td><td>0.093</td><td>0.107</td><td>0.742</td><td>0.217</td><td>0.212</td><td>0.809</td><td>14.3</td></tr>
+        <tr><td>LingBot-Map</td><td>Online</td><td>0.040</td><td>0.061</td><td>0.768</td><td>0.039</td><td>0.045</td><td>0.893</td><td>15.8</td></tr>
+        <tr class="ours"><td>LinearVGGT (ours)</td><td>Online</td><td>0.066</td><td>0.073</td><td>0.748</td><td>0.078</td><td>0.067</td><td>0.859</td><td>38.8</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="figures">
+    <figure>
+      <div class="plate"><img src="static/images/qualitative.png" alt="Point clouds of CUT3R, TTT3R, StreamVGGT, LingBot-Map, LinearVGGT and the ground truth for two scenes with sparse views and two scenes with dense views." loading="lazy"></div>
+      <figcaption>Qualitative results for 3D reconstruction with sparse and dense views.</figcaption>
+    </figure>
+    <figure>
+      <div class="plate"><img src="static/images/long_sequence.png" alt="Left: Chamfer distance on 7-Scenes against the number of input frames. Right: average latency per frame against the number of input frames." loading="lazy"></div>
+      <figcaption>Accuracy and efficiency against the sequence length. The Chamfer distance is the mean of accuracy and completeness.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="wrap" id="depth">
+  <h2>Video depth</h2>
+  <div class="scroll">
+    <table>
+      <caption>Video depth estimation. The predicted depth of each sequence is aligned to the ground truth with a scale factor. AbsRel: lower is better. δ&lt;1.25: higher is better.</caption>
+      <thead>
+        <tr><th rowspan="2">Method</th><th rowspan="2">Mode</th><th colspan="2">Sintel</th><th colspan="2">Bonn</th><th colspan="2">KITTI</th></tr>
+        <tr><th>AbsRel</th><th>δ&lt;1.25</th><th>AbsRel</th><th>δ&lt;1.25</th><th>AbsRel</th><th>δ&lt;1.25</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>VGGT</td><td>Offline</td><td>0.298</td><td>0.682</td><td>0.057</td><td>0.968</td><td>0.061</td><td>0.970</td></tr>
+        <tr><td>π³</td><td>Offline</td><td>0.248</td><td>0.679</td><td>0.049</td><td>0.975</td><td>0.037</td><td>0.986</td></tr>
+        <tr><td>StreamVGGT (teacher)</td><td>Online</td><td>0.323</td><td>0.658</td><td>0.059</td><td>0.972</td><td>0.173</td><td>0.721</td></tr>
+        <tr><td>OVGGT</td><td>Online</td><td>0.330</td><td>0.634</td><td>0.058</td><td>0.971</td><td>0.127</td><td>0.839</td></tr>
+        <tr><td>CUT3R</td><td>Online</td><td>0.459</td><td>0.476</td><td>0.072</td><td>0.950</td><td>0.141</td><td>0.829</td></tr>
+        <tr><td>TTT3R</td><td>Online</td><td>0.432</td><td>0.497</td><td>0.063</td><td>0.969</td><td>0.136</td><td>0.851</td></tr>
+        <tr><td>ZipMap</td><td>Online</td><td>0.292</td><td>0.606</td><td>0.077</td><td>0.955</td><td>0.096</td><td>0.920</td></tr>
+        <tr><td>LingBot-Map</td><td>Online</td><td>0.318</td><td>0.658</td><td>0.059</td><td>0.960</td><td>0.070</td><td>0.962</td></tr>
+        <tr class="ours"><td>LinearVGGT (ours)</td><td>Online</td><td>0.317</td><td>0.647</td><td>0.052</td><td>0.969</td><td>0.093</td><td>0.947</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="wrap" id="bibtex">
+  <h2>BibTeX</h2>
+  <div class="bib">
+    <button type="button" id="copy-bib">Copy</button>
+<pre id="bib-text">@article{kang2026linearvggt,
+  title   = {Linear-time Online Visual Geometry Transformer
+             with Hybrid Architecture},
+  author  = {Kang, Haoyu and Li, Pingzhi and Zhang, Ruichen and Chen, Tianlong},
+  journal = {arXiv preprint},
+  year    = {2026}
+}</pre>
+  </div>
+</section>
+</main>
+
+<footer class="wrap">
+  <p>The viewer shows the direct output of each method on public test sequences of 7-Scenes and Neural RGB-D, with the same processing for the three methods: the depth map of each frame unprojected with the predicted camera, 2,500 points for each frame, the frame sampling that the scene tab shows, without the 30% of the points that have the lowest confidence. No alignment to ground truth and no optimization after the model. Each view is fitted to its own reconstruction.</p>
+  <p>LinearVGGT is built on StreamVGGT, VGGT, CUT3R and Mamba.</p>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var SCENES = [
+    { id: "office", label: "7-Scenes · office", note: "160 frames · each 5th frame of seq-01" },
+    { id: "kitchen", label: "NRGBD · kitchen", note: "160 frames · each 6th frame" },
+    { id: "complete_kitchen", label: "NRGBD · complete kitchen", note: "25 frames · each 50th frame (dense views of the paper)" },
+    { id: "whiteroom", label: "NRGBD · white room", note: "34 frames · each 50th frame (dense views of the paper)" }
+  ];
+  var METHODS = [
+    { id: "cut3r", name: "CUT3R", tag: "recurrent state" },
+    { id: "streamvggt", name: "StreamVGGT", tag: "teacher · full cache" },
+    { id: "linearvggt", name: "LinearVGGT", tag: "ours", ours: true }
+  ];
+  var BASE = "static/scenes/";
+  var $ = function (id) { return document.getElementById(id); };
+  var timeline = $("timeline"), playButton = $("play"), loading = $("loading"), panelsBox = $("panels");
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Per scene, from the data files: LATENCY_MS[method][i] = measured latency of frame i (one RTX PRO 6000 Blackwell
+  // GPU, the frames of this scene at 518x392, heads included; LinearVGGT with its efficient streaming inference,
+  // StreamVGGT and CUT3R with their official streaming inference). DONE = time at which a method has finished
+  // frame i, TOTAL = time of the slowest method.
+  var LATENCY_MS = {}, DONE = {}, TOTAL = 1, FRAMES = 160;
+  function setTiming(datas) {
+    TOTAL = 0;
+    METHODS.forEach(function (m, i) {
+      var sum = 0;
+      LATENCY_MS[m.id] = datas[i].meta.latency_ms;
+      DONE[m.id] = LATENCY_MS[m.id].map(function (ms) { sum += ms; return sum; });
+      TOTAL = Math.max(TOTAL, sum);
+    });
+    FRAMES = LATENCY_MS.linearvggt.length;
+  }
+
+  var state = { scene: null, mode: "speed", t: 0, frame: 0, playing: !reduceMotion, rate: 1, last: 0,
+                acc: 0, token: 0, yaw: 0.55, pitch: 0.42, zoom: 0.95, pan: [0, 0, 0] };
+
+  // ---------- small vector / matrix helpers (column-major 4x4) ----------
+  function norm(v) { var n = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / n, v[1] / n, v[2] / n]; }
+  function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+  function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function mul(a, b) {
+    var o = new Float32Array(16);
+    for (var c = 0; c < 4; c++) for (var r = 0; r < 4; r++)
+      o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    return o;
+  }
+  function perspective(fovy, aspect, near, far) {
+    var f = 1 / Math.tan(fovy / 2), o = new Float32Array(16);
+    o[0] = f / aspect; o[5] = f; o[10] = (far + near) / (near - far); o[11] = -1; o[14] = 2 * far * near / (near - far);
+    return o;
+  }
+  function lookAt(eye, target, up) {
+    var z = norm([eye[0] - target[0], eye[1] - target[1], eye[2] - target[2]]), x = norm(cross(up, z)), y = cross(z, x);
+    return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1]);
+  }
+
+  // ---------- data ----------
+  // The point data is <method>.bin, or the same bytes stored as the RGB pixels of a lossless PNG
+  // ("points": "<method>.png" in the json) for hosts that serve only web file types.
+  function loadPoints(dir, name) {
+    if (!/\.png$/.test(name)) return fetch(dir + name).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); });
+    return new Promise(function (resolve, reject) {
+      var im = new Image();
+      im.onerror = reject;
+      im.onload = function () {
+        var c = document.createElement("canvas"); c.width = im.width; c.height = im.height;
+        var ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(im, 0, 0);
+        var rgba = ctx.getImageData(0, 0, im.width, im.height).data, n = im.width * im.height, out = new Uint8Array(n * 3);
+        for (var i = 0, j = 0; i < n * 4; i += 4) { out[j++] = rgba[i]; out[j++] = rgba[i + 1]; out[j++] = rgba[i + 2]; }
+        resolve(out.buffer);
+      };
+      im.src = dir + name;
+    });
+  }
+  function loadData(sceneId, methodId) {
+    var dir = BASE + sceneId + "/";
+    return fetch(dir + methodId + ".json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (meta) {
+      return loadPoints(dir, meta.points || (methodId + ".bin")).then(function (buf) { return parse(meta, buf); });
+    });
+  }
+  function parse(meta, buf) {
+    var total = 0, t, i;
+    for (t = 0; t < meta.frames; t++) total += meta.counts[t];
+    var pos = new Float32Array(total * 3), col = new Uint8Array(total * 3), fid = new Uint16Array(total);
+    var starts = new Uint32Array(meta.frames + 1), off = 0, n = 0;
+    var span = [meta.hi[0] - meta.lo[0], meta.hi[1] - meta.lo[1], meta.hi[2] - meta.lo[2]];
+    for (t = 0; t < meta.frames; t++) {
+      var count = meta.counts[t];
+      var q = new Uint16Array(buf.slice(off, off + count * 6)); off += count * 6;
+      var rgb = new Uint8Array(buf, off, count * 3); off += count * 3;
+      for (i = 0; i < count; i++) {
+        pos[n * 3] = meta.lo[0] + q[i * 3] / 65535 * span[0];
+        pos[n * 3 + 1] = meta.lo[1] + q[i * 3 + 1] / 65535 * span[1];
+        pos[n * 3 + 2] = meta.lo[2] + q[i * 3 + 2] / 65535 * span[2];
+        fid[n] = t; n++;
+      }
+      col.set(rgb, starts[t] * 3);
+      starts[t + 1] = n;
+    }
+    // World alignment: up = mean camera up; the first camera looks along -z.
+    var up = [0, 0, 0], cams = meta.cameras;
+    for (t = 0; t < cams.length; t++) { up[0] += cams[t][1]; up[1] += cams[t][5]; up[2] += cams[t][9]; }
+    up = norm(up);
+    var fwd = [-cams[0][2], -cams[0][6], -cams[0][10]];
+    var right = norm(cross(fwd, up)), back = cross(right, up);
+    var align = new Float32Array([right[0], up[0], back[0], 0, right[1], up[1], back[1], 0, right[2], up[2], back[2], 0, 0, 0, 0, 1]);
+    var diag = Math.hypot(span[0], span[1], span[2]);
+    var mid = [(meta.lo[0] + meta.hi[0]) / 2, (meta.lo[1] + meta.hi[1]) / 2, (meta.lo[2] + meta.hi[2]) / 2];
+    // Camera frusta (16 line vertices per camera) and the trajectory (one vertex per camera).
+    var fr = new Float32Array(cams.length * 48), traj = new Float32Array(cams.length * 3), s = 0.035 * diag;
+    for (t = 0; t < cams.length; t++) {
+      var m = cams[t], ty = Math.tan(meta.fov_y[t] * Math.PI / 360), tx = ty * meta.aspect;
+      var o = [m[3], m[7], m[11]], corners = [[-tx, -ty], [tx, -ty], [tx, ty], [-tx, ty]].map(function (k) {
+        var x = k[0] * s, y = k[1] * s, z = -s;
+        return [m[0] * x + m[1] * y + m[2] * z + m[3], m[4] * x + m[5] * y + m[6] * z + m[7], m[8] * x + m[9] * y + m[10] * z + m[11]];
+      });
+      var verts = [];
+      for (i = 0; i < 4; i++) { verts.push(o, corners[i]); }
+      for (i = 0; i < 4; i++) { verts.push(corners[i], corners[(i + 1) % 4]); }
+      for (i = 0; i < 16; i++) fr.set(verts[i], t * 48 + i * 3);
+      traj.set(o, t * 3);
+    }
+    // Scenes with few frames have few points: draw them larger, so that surfaces stay closed.
+    return { pointScale: Math.min(2.2, Math.max(1, Math.sqrt(400000 / Math.max(total, 1)))), meta: meta, starts: starts, pos: pos, col: col, fid: fid, frusta: fr, traj: traj, align: align, diag: diag,
+             center: [dot(right, mid), dot(up, mid), dot(back, mid)] };
+  }
+
+  // ---------- one panel per method ----------
+  function createPanel(method) {
+    var root = document.createElement("div");
+    root.className = "panel" + (method.ours ? " ours" : "");
+    root.innerHTML = '<div class="panel-head"><h3></h3><span></span></div>' +
+      '<div class="panel-view"><canvas tabindex="0"></canvas><div class="frame" role="img"></div></div>' +
+      '<div class="bar"><i></i></div>' +
+      '<dl class="readout"><dt>frame</dt><dd class="r-frame">–</dd><dt>latency of this frame</dt><dd class="r-lat">–</dd>' +
+      '<dt>time for all frames</dt><dd class="r-total">–</dd></dl>';
+    root.querySelector("h3").textContent = method.name;
+    root.querySelector(".panel-head span").textContent = method.tag;
+    var canvas = root.querySelector("canvas");
+    canvas.setAttribute("aria-label", "Point cloud of " + method.name + ". Drag to rotate.");
+    root.querySelector(".frame").setAttribute("aria-label", "Input frame that " + method.name + " has finished");
+    panelsBox.insertBefore(root, loading);
+    var gl = canvas.getContext("webgl", { antialias: true, alpha: false });
+    var panel = { method: method, root: root, canvas: canvas, gl: gl, data: null, buffers: null, shown: -2,
+                  thumb: root.querySelector(".frame"), bar: root.querySelector(".bar i"),
+                  rFrame: root.querySelector(".r-frame"), rLat: root.querySelector(".r-lat"), rTotal: root.querySelector(".r-total") };
+    if (!gl) return panel;
+    function program(vs, fs) {
+      var p = gl.createProgram();
+      [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].forEach(function (s) {
+        var sh = gl.createShader(s[0]); gl.shaderSource(sh, s[1]); gl.compileShader(sh); gl.attachShader(p, sh);
+      });
+      gl.linkProgram(p);
+      return p;
+    }
+    var pp = program(
+      "attribute vec3 p; attribute vec3 c; attribute float f; uniform mat4 mvp; uniform float size, cur; uniform vec3 hl; varying vec3 vc;" +
+      "void main(){ gl_Position = mvp * vec4(p, 1.0); gl_PointSize = clamp(size / gl_Position.w, 1.5, 12.0);" +
+      " float a = clamp(1.0 - (cur - f) / 3.0, 0.0, 1.0); vc = mix(c, hl, 0.35 * a); }",
+      "precision mediump float; varying vec3 vc; void main(){ gl_FragColor = vec4(vc, 1.0); }");
+    var lp = program(
+      "attribute vec3 p; uniform mat4 mvp; void main(){ gl_Position = mvp * vec4(p, 1.0); }",
+      "precision mediump float; uniform vec4 color; void main(){ gl_FragColor = color; }");
+    panel.loc = {
+      pp: pp, lp: lp, p: gl.getAttribLocation(pp, "p"), c: gl.getAttribLocation(pp, "c"), f: gl.getAttribLocation(pp, "f"),
+      mvp: gl.getUniformLocation(pp, "mvp"), size: gl.getUniformLocation(pp, "size"), cur: gl.getUniformLocation(pp, "cur"),
+      hl: gl.getUniformLocation(pp, "hl"), lpos: gl.getAttribLocation(lp, "p"), lmvp: gl.getUniformLocation(lp, "mvp"),
+      lcolor: gl.getUniformLocation(lp, "color")
+    };
+    return panel;
+  }
+
+  function setData(panel, data) {
+    var gl = panel.gl;
+    panel.data = data; panel.shown = -2;
+    if (!gl) return;
+    if (panel.buffers) Object.keys(panel.buffers).forEach(function (k) { gl.deleteBuffer(panel.buffers[k]); });
+    function vbo(a) { var b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, a, gl.STATIC_DRAW); return b; }
+    panel.buffers = { pos: vbo(data.pos), col: vbo(data.col), fid: vbo(data.fid), frusta: vbo(data.frusta), traj: vbo(data.traj) };
+  }
+
+  function frameOf(methodId) {
+    if (!state.scene) return -1;                    // nothing is loaded yet
+    if (state.mode === "frame") return state.frame;
+    var done = DONE[methodId], i = 0;
+    while (i < done.length && done[i] <= state.t) i++;
+    return i - 1;                                   // -1: the first frame is not finished yet
+  }
+
+  function draw(panel, frame) {
+    var gl = panel.gl, s = panel.data, canvas = panel.canvas, loc = panel.loc, b = panel.buffers;
+    if (!gl) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0.047, 0.071, 0.125, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if (!s || frame < 0) return;
+    frame = Math.min(frame, s.meta.frames - 1);
+    var fovy = 0.75, cp = Math.cos(state.pitch), dist = state.zoom * s.diag;
+    var target = [s.center[0] + state.pan[0] * s.diag, s.center[1] + state.pan[1] * s.diag, s.center[2] + state.pan[2] * s.diag];
+    var eye = [target[0] + dist * Math.sin(state.yaw) * cp, target[1] + dist * Math.sin(state.pitch), target[2] + dist * Math.cos(state.yaw) * cp];
+    var mvp = mul(perspective(fovy, w / h, dist * 0.02, dist * 30 + s.diag * 4), mul(lookAt(eye, target, [0, 1, 0]), s.align));
+    gl.enable(gl.DEPTH_TEST);
+    gl.useProgram(loc.pp);
+    gl.uniformMatrix4fv(loc.mvp, false, mvp);
+    gl.uniform1f(loc.size, 0.0055 * s.pointScale * s.diag * h / Math.tan(fovy / 2));
+    gl.uniform1f(loc.cur, frame);
+    gl.uniform3f(loc.hl, 0.345, 0.718, 0.941);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b.pos); gl.enableVertexAttribArray(loc.p); gl.vertexAttribPointer(loc.p, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b.col); gl.enableVertexAttribArray(loc.c); gl.vertexAttribPointer(loc.c, 3, gl.UNSIGNED_BYTE, true, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b.fid); gl.enableVertexAttribArray(loc.f); gl.vertexAttribPointer(loc.f, 1, gl.UNSIGNED_SHORT, false, 0, 0);
+    gl.drawArrays(gl.POINTS, 0, s.starts[frame + 1]);
+    gl.disableVertexAttribArray(loc.c); gl.disableVertexAttribArray(loc.f);
+    gl.useProgram(loc.lp);
+    gl.uniformMatrix4fv(loc.lmvp, false, mvp);
+    gl.enableVertexAttribArray(loc.lpos);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b.traj); gl.vertexAttribPointer(loc.lpos, 3, gl.FLOAT, false, 0, 0);
+    gl.uniform4f(loc.lcolor, 0.96, 0.62, 0.26, 1);
+    gl.drawArrays(gl.LINE_STRIP, 0, frame + 1);
+    gl.bindBuffer(gl.ARRAY_BUFFER, b.frusta); gl.vertexAttribPointer(loc.lpos, 3, gl.FLOAT, false, 0, 0);
+    gl.disable(gl.DEPTH_TEST);
+    gl.uniform4f(loc.lcolor, 1, 1, 1, 1);
+    gl.drawArrays(gl.LINES, frame * 16, 16);
+  }
+
+  var panels = METHODS.map(createPanel), dirty = true;
+
+  function refresh() {
+    panels.forEach(function (panel) {
+      var id = panel.method.id, frame = frameOf(id), s = panel.data;
+      draw(panel, frame);
+      if (frame === panel.shown) return;
+      panel.shown = frame;
+      var finished = state.mode === "speed" && frame >= FRAMES - 1;
+      panel.rFrame.textContent = frame < 0 ? "0 / " + FRAMES : (frame + 1) + " / " + FRAMES;
+      panel.rLat.textContent = frame < 0 ? "–" : LATENCY_MS[id][frame].toFixed(0) + " ms";
+      panel.rTotal.className = "r-total" + (finished ? " done" : "");
+      panel.bar.style.width = ((frame + 1) / FRAMES * 100) + "%";
+      panel.thumb.style.opacity = frame < 0 ? "0" : "1";
+      if (s && frame >= 0) {
+        var atlas = s.meta.atlas, col = frame % atlas[0], row = Math.floor(frame / atlas[0]);
+        panel.thumb.style.backgroundPosition = (atlas[0] > 1 ? col / (atlas[0] - 1) * 100 : 0) + "% " + (atlas[1] > 1 ? row / (atlas[1] - 1) * 100 : 0) + "%";
+      }
+    });
+    if (state.mode === "speed") {
+      timeline.value = Math.round(state.t / TOTAL * 1000);
+      $("count").textContent = (state.t / 1000).toFixed(1) + " s";
+    } else {
+      timeline.value = state.frame;
+      $("count").textContent = (state.frame + 1) + " / " + FRAMES;
+    }
+  }
+
+  function selectScene(index) {
+    var info = SCENES[index], token = ++state.token;
+    Array.prototype.forEach.call($("scene-tabs").children, function (b, i) { b.setAttribute("aria-selected", i === index ? "true" : "false"); });
+    $("scene-note").textContent = info.note;
+    loading.hidden = false; loading.textContent = "Loading the scene…";
+    var atlasUrl = BASE + info.id + "/frames.jpg";
+    Promise.all(METHODS.map(function (m) { return loadData(info.id, m.id); }).concat(
+      [new Promise(function (resolve) { var im = new Image(); im.onload = im.onerror = resolve; im.src = atlasUrl; })]
+    )).then(function (res) {
+      if (token !== state.token) return;
+      setTiming(res);
+      if (state.mode === "frame") timeline.max = FRAMES - 1;
+      panels.forEach(function (panel, i) {
+        setData(panel, res[i]);
+        panel.rTotal.textContent = (DONE[panel.method.id][FRAMES - 1] / 1000).toFixed(1) + " s";
+        var atlas = res[i].meta.atlas;
+        panel.thumb.style.aspectRatio = String(res[i].meta.aspect);
+        panel.thumb.style.backgroundImage = "url(" + atlasUrl + ")";
+        panel.thumb.style.backgroundSize = (atlas[0] * 100) + "% " + (atlas[1] * 100) + "%";
+      });
+      state.scene = info.id;
+      state.yaw = 0.55; state.pitch = 0.42; state.zoom = 0.95; state.pan = [0, 0, 0];
+      if (reduceMotion) { state.t = TOTAL; state.frame = FRAMES - 1; }
+      else { state.t = 0; state.frame = 0; state.playing = true; playButton.textContent = "Pause"; }
+      loading.hidden = true; dirty = true;
+    }).catch(function () {
+      if (token !== state.token) return;
+      loading.textContent = "The scene did not load. Check that static/scenes/" + info.id + " is next to this page.";
+    });
+  }
+
+  function tick(now) {
+    var dt = state.last ? Math.min(now - state.last, 100) : 0;
+    state.last = now;
+    if (state.scene && state.playing) {
+      if (state.mode === "speed") {
+        state.t = Math.min(TOTAL, state.t + dt * state.rate);
+        if (state.t >= TOTAL) { state.playing = false; playButton.textContent = "Replay"; }
+      } else {
+        state.acc += dt * state.rate;
+        while (state.acc >= 1000 / 12) {
+          state.acc -= 1000 / 12;
+          if (state.frame < FRAMES - 1) state.frame++;
+          else { state.playing = false; playButton.textContent = "Replay"; state.acc = 0; }
+        }
+      }
+      dirty = true;
+    }
+    if (dirty) { dirty = false; refresh(); }
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- controls ----------
+  SCENES.forEach(function (info, i) {
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "tab"); b.id = "tab-" + info.id; b.textContent = info.label;
+    b.addEventListener("click", function () { selectScene(i); });
+    $("scene-tabs").appendChild(b);
+  });
+  playButton.textContent = state.playing ? "Pause" : "Play";
+  playButton.addEventListener("click", function () {
+    var atEnd = state.mode === "speed" ? state.t >= TOTAL : state.frame >= FRAMES - 1;
+    if (!state.playing && atEnd) { state.t = 0; state.frame = 0; }
+    state.playing = !state.playing; playButton.textContent = state.playing ? "Pause" : "Play"; dirty = true;
+  });
+  timeline.addEventListener("input", function () {
+    state.playing = false; playButton.textContent = "Play";
+    if (state.mode === "speed") state.t = +timeline.value / 1000 * TOTAL; else state.frame = +timeline.value;
+    dirty = true;
+  });
+  $("mode").addEventListener("change", function (e) {
+    if (e.target.value === state.mode) return;
+    if (e.target.value === "frame") {              // keep the frame of our method
+      state.frame = Math.max(0, frameOf("linearvggt")); state.mode = "frame"; timeline.max = FRAMES - 1;
+    } else {
+      state.mode = "speed"; state.t = DONE.linearvggt[state.frame]; timeline.max = 1000;
+    }
+    panels.forEach(function (p) { p.shown = -2; });
+    dirty = true;
+  });
+  $("speed").addEventListener("change", function (e) { state.rate = +e.target.value; });
+
+  var pointers = {}, pinch = 0;
+  panels.forEach(function (panel) {
+    var canvas = panel.canvas;
+    canvas.addEventListener("pointerdown", function (e) { canvas.setPointerCapture(e.pointerId); pointers[e.pointerId] = { x: e.clientX, y: e.clientY }; pinch = 0; });
+    canvas.addEventListener("pointermove", function (e) {
+      var p = pointers[e.pointerId]; if (!p) return;
+      var dx = e.clientX - p.x, dy = e.clientY - p.y, ids = Object.keys(pointers);
+      p.x = e.clientX; p.y = e.clientY;
+      if (ids.length === 2) {
+        var a = pointers[ids[0]], b = pointers[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch) state.zoom *= pinch / d;
+        pinch = d;
+      } else if (e.shiftKey || e.buttons === 2) {
+        var k = state.zoom / canvas.clientHeight * 1.2, cy = Math.cos(state.yaw), sy = Math.sin(state.yaw);
+        state.pan[0] -= dx * k * cy; state.pan[2] += dx * k * sy; state.pan[1] += dy * k;
+      } else {
+        state.yaw -= dx * 0.006; state.pitch = Math.max(-1.45, Math.min(1.45, state.pitch + dy * 0.006));
+      }
+      dirty = true;
+    });
+    function release(e) { delete pointers[e.pointerId]; pinch = 0; }
+    canvas.addEventListener("pointerup", release); canvas.addEventListener("pointercancel", release);
+    canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    canvas.addEventListener("wheel", function (e) { e.preventDefault(); state.zoom *= Math.exp(e.deltaY * 0.0012); dirty = true; }, { passive: false });
+    canvas.addEventListener("keydown", function (e) {
+      var step = 0.08, used = true;
+      if (e.key === "ArrowLeft") state.yaw += step; else if (e.key === "ArrowRight") state.yaw -= step;
+      else if (e.key === "ArrowUp") state.pitch = Math.min(1.45, state.pitch + step); else if (e.key === "ArrowDown") state.pitch = Math.max(-1.45, state.pitch - step);
+      else if (e.key === "+" || e.key === "=") state.zoom *= 0.9; else if (e.key === "-") state.zoom *= 1.1; else used = false;
+      if (used) { e.preventDefault(); dirty = true; }
+    });
+    if (window.ResizeObserver) new ResizeObserver(function () { dirty = true; }).observe(canvas);
+  });
+  window.addEventListener("resize", function () { dirty = true; });
+
+  $("copy-bib").addEventListener("click", function () {
+    var button = this, text = $("bib-text").textContent;
+    function select() { var r = document.createRange(); r.selectNodeContents($("bib-text")); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); button.textContent = "Selected"; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { button.textContent = "Copied"; }, select);
+    else select();
+  });
+
+  if (!panels[0].gl) { loading.textContent = "This browser cannot show the 3D viewer (WebGL is not available)."; return; }
+  selectScene(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+<!--/PAGE-BODY-->
+</body>
+</html>
