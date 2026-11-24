@@ -85,6 +85,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .panel.ours .bar i { background: var(--stage-accent); }
 .panel .done { color: var(--stage-accent); }
 .panels .loading { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font: 400 0.85rem var(--mono); color: var(--stage-muted); background: var(--stage); }
+.film video { display: block; width: 100%; height: auto; aspect-ratio: 1280 / 536; background: var(--stage); }
+.stage-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; padding: 0.8rem 1rem; border-top: 1px solid var(--stage-line); }
+.stage-actions button { font: 600 0.85rem var(--body); color: var(--stage-ink); background: transparent; border: 1px solid var(--stage-muted); border-radius: 6px; padding: 0.45rem 0.9rem; cursor: pointer; }
+.stage-actions span { font-size: 0.78rem; color: var(--stage-muted); flex: 1 1 16rem; min-width: 0; }
 .transport { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1rem; padding: 0.75rem 1rem; border-top: 1px solid var(--stage-line); }
 .transport .play { width: 5.2rem; font: 600 0.85rem var(--body); color: var(--stage); background: var(--stage-ink); border: 0; border-radius: 6px; padding: 0.45rem 0; cursor: pointer; }
 .transport input[type="range"] { flex: 1 1 12rem; min-width: 0; accent-color: var(--stage-accent); }
@@ -159,6 +163,10 @@ footer p { max-width: 76ch; margin: 0 0 0.5rem; }
       <div class="tabs" role="tablist" aria-label="Scene" id="scene-tabs"></div>
       <span class="stage-note" id="scene-note"></span>
     </div>
+    <div class="film" id="film">
+      <video id="film-video" muted loop playsinline controls preload="metadata" aria-label="Side-by-side reconstruction of CUT3R, StreamVGGT and LinearVGGT at their measured speed"></video>
+    </div>
+    <div id="interactive" hidden>
     <div class="panels" id="panels">
       <div class="loading" id="loading">Loading the scene…</div>
     </div>
@@ -181,7 +189,12 @@ footer p { max-width: 76ch; margin: 0 0 0.5rem; }
         </select>
       </label>
     </div>
-    <p class="stage-foot">The three methods receive the same frames at the same time. With <b>measured speed</b>, each method shows a frame when it has finished that frame: the clock uses the latency that we measured for each frame of each method on these streams, on one RTX PRO 6000 Blackwell GPU with 518×392 frames. With <b>same frame</b>, the three views show the same frame, for a comparison of the geometry. Drag to rotate all views, scroll or pinch to zoom.</p>
+    </div>
+    <div class="stage-actions">
+      <button type="button" id="toggle-view">Open the interactive viewer</button>
+      <span id="toggle-note">Rotate and zoom the three reconstructions in your browser. It loads up to 12 MB for one scene and needs a graphics card.</span>
+    </div>
+    <p class="stage-foot">The three methods receive the same frames at the same time, and each method shows a frame when it has finished that frame. The clock uses the latency that we measured for each frame of each method on these streams, on one RTX PRO 6000 Blackwell GPU with 518×392 frames: one second of the video is one second of processing. In the interactive viewer, <b>same frame</b> shows the same frame in the three views, for a comparison of the geometry.</p>
   </div>
 
   <div class="facts">
@@ -559,10 +572,32 @@ footer p { max-width: 76ch; margin: 0 0 0.5rem; }
     }
   }
 
+  // The page opens with a pre-rendered video of each scene. The interactive viewer (WebGL, point data) loads
+  // only when the visitor opens it.
+  var video = $("film-video"), interactive = false, ticking = false, current = 0;
   function selectScene(index) {
-    var info = SCENES[index], token = ++state.token;
+    var info = SCENES[index];
+    current = index;
     Array.prototype.forEach.call($("scene-tabs").children, function (b, i) { b.setAttribute("aria-selected", i === index ? "true" : "false"); });
     $("scene-note").textContent = info.note;
+    if (interactive) { loadScene(index); return; }
+    video.poster = "static/videos/" + info.id + ".jpg";
+    video.src = "static/videos/" + info.id + ".mp4";
+    if (!reduceMotion) { var playing = video.play(); if (playing && playing.catch) playing.catch(function () {}); }
+  }
+  $("toggle-view").addEventListener("click", function () {
+    interactive = !interactive;
+    $("interactive").hidden = !interactive; $("film").hidden = interactive; $("toggle-note").hidden = interactive;
+    this.textContent = interactive ? "Show the video" : "Open the interactive viewer";
+    if (!interactive) { state.playing = false; playButton.textContent = "Play"; selectScene(current); return; }
+    video.pause();
+    if (!panels[0].gl) { loading.hidden = false; loading.textContent = "This browser cannot show the 3D viewer (WebGL is not available)."; return; }
+    loadScene(current);
+    if (!ticking) { ticking = true; requestAnimationFrame(tick); }
+  });
+  function loadScene(index) {
+    var info = SCENES[index], token = ++state.token;
+    state.scene = null;
     loading.hidden = false; loading.textContent = "Loading the scene…";
     var atlasUrl = BASE + info.id + "/frames.jpg";
     Promise.all(METHODS.map(function (m) { return loadData(info.id, m.id); }).concat(
@@ -683,9 +718,7 @@ footer p { max-width: 76ch; margin: 0 0 0.5rem; }
     else select();
   });
 
-  if (!panels[0].gl) { loading.textContent = "This browser cannot show the 3D viewer (WebGL is not available)."; return; }
   selectScene(0);
-  requestAnimationFrame(tick);
 })();
 </script>
 <!--/PAGE-BODY-->
