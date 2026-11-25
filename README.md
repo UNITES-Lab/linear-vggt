@@ -6,7 +6,7 @@ Haoyu Kang, Pingzhi Li, Ruichen Zhang, Tianlong Chen
 UNITES Lab, University of North Carolina at Chapel Hill
 
 <a href="#"><img src="https://img.shields.io/badge/arXiv-coming_soon-b31b1b.svg" alt="arXiv"></a>
-<a href="#"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg" alt="Project page"></a>
+<a href="https://unites-lab.github.io/linear-vggt/"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg" alt="Project page"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg" alt="License"></a>
 
 </div>
