@@ -5,7 +5,7 @@ Haoyu Kang, Pingzhi Li, Ruichen Zhang, Tianlong Chen
 
 UNITES Lab, University of North Carolina at Chapel Hill
 
-<a href="#"><img src="https://img.shields.io/badge/arXiv-coming_soon-b31b1b.svg" alt="arXiv"></a>
+<a href="https://arxiv.org/abs/2611.33650"><img src="https://img.shields.io/badge/arXiv-2611.33650-b31b1b.svg" alt="arXiv"></a>
 <a href="https://unites-lab.github.io/linear-vggt/"><img src="https://img.shields.io/badge/Project-Page-1f6feb.svg" alt="Project page"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg" alt="License"></a>
 
@@ -122,7 +122,7 @@ This code is built on [StreamVGGT](https://github.com/wzzheng/StreamVGGT), [VGGT
 @article{kang2026linearvggt,
   title   = {Linear-time Online Visual Geometry Transformer with Hybrid Architecture},
   author  = {Kang, Haoyu and Li, Pingzhi and Zhang, Ruichen and Chen, Tianlong},
-  journal = {arXiv preprint},
+  journal = {arXiv preprint arXiv:2611.33650},
   year    = {2026}
 }
 ```
